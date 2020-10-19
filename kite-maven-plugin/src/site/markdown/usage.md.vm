@@ -1,0 +1,188 @@
+#set($h1 = '#')
+#set($h2 = '##')
+#set($h3 = '###')
+#set($h4 = '####')
+
+$h1 Usage
+
+$h2 Working with datasets
+
+The `kite:create-dataset` and `kite:delete-dataset` goals are for creating and deleting
+datasets. Configure the Hadoop settings by declaring the plugin in your POM:
+
+```xml
+<project>
+  ...
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.kitesdk</groupId>
+        <artifactId>kite-maven-plugin</artifactId>
+        <version>${project.version}</version>
+        <configuration>
+          <hadoopConfiguration>
+            <property>
+              <name>fs.default.name</name>
+              <value>hdfs://localhost</value>
+            </property>
+            <property>
+              <name>hive.metastore.uris</name>
+              <value>thrift://localhost:9083</value>
+            </property>
+          </hadoopConfiguration>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+   ...
+</project>
+```
+
+If you are using the default settings (local file system and local Hive metastore) then
+you can omit the `configuration` element.
+
+To create a new dataset, run:
+
+```bash
+mvn kite:create-dataset \
+  -Dkite.rootDirectory=/tmp/data \
+  -Dkite.datasetName=mydataset \
+  -Dkite.avroSchemaFile=myschema.avsc
+```
+
+The `avroSchemaFile` property specifies a local file.
+
+To delete a dataset, run:
+
+```bash
+mvn kite:delete-dataset \
+  -Dkite.rootDirectory=/tmp/data \
+  -Dkite.datasetName=mydataset
+```
+
+$h2 Launching jobs locally with kite:run-tool
+
+This goal is used to run a Hadoop Tool. The Tool's `run()` method is executed in the same
+local VM as Maven, however it is common for the Tool to launch distributed processes,
+such as MapReduce jobs which run on a cluster.
+
+```xml
+<project>
+  ...
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.kitesdk</groupId>
+        <artifactId>kite-maven-plugin</artifactId>
+        <version>${project.version}</version>
+        <configuration>
+          <toolClass>org.example.ToolImplementation</toolClass>
+          <!-- optional -->
+          <args>
+            <arg>arg1</arg>
+            <arg>arg2</arg>
+          </args>
+          <hadoopConfiguration>
+            <property>
+              <name>fs.default.name</name>
+              <value>hdfs://localhost</value>
+            </property>
+            <property>
+              <name>mapred.job.tracker</name>
+              <value>localhost:8021</value>
+            </property>
+          </hadoopConfiguration>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+   ...
+</project>
+```
+
+Run the tool using:
+
+```bash
+mvn kite:run-tool
+```
+
+$h3 Understanding the classpath
+
+The classpath for the local VM is made up of the _runtime_ classpath (all dependencies
+in the _compile_ and _runtime_ scopes). Hadoop libraries are provided by the plugin,
+so there is no need to include Hadoop in the _compile_ and _runtime_ scopes (and indeed
+doing so may cause undefined behaviour).
+
+The classpath for distributed processes is made up of the _runtime_ classpath , unless
+`kite.addDependenciesToDistributedCache` is set to `false` (the default is `true`),
+in which case no dependencies are included in the distributed classpath.
+
+This makes it very convenient to run distributed jobs, since all runtime dependencies
+are automatically included in the Tool classpath and the MapReduce task classpath.
+
+$h2 Launching jobs from the cluster
+
+There are three goals for building and running jobs on the cluster:
+
+* `kite:package-app` builds a packaged application locally (in the Oozie package format)
+* `kite:deploy-app` deploys the packaged application to the cluster
+* `kite:run-app` runs the deployed application as an Oozie job
+
+A packaged application includes an Oozie workflow file, an Oozie coordinator file
+(optional), and the dependencies on the _runtime_ classpath. The workflow file may be
+generated from the plugin configuration. The following example shows how to run the
+previous example from the cluster, by adding properties for `deployFileSystem`
+and `oozieUrl`, and a `executions` section to bind `kite-package` to the `package` phase
+of the Maven lifecycle.
+
+```xml
+<project>
+  ...
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.kitesdk</groupId>
+        <artifactId>kite-maven-plugin</artifactId>
+        <version>${project.version}</version>
+        <configuration>
+          <toolClass>org.example.ToolImplementation</toolClass>
+          <deployFileSystem>hdfs://localhost/</deployFileSystem>
+          <oozieUrl>http://localhost:11000/oozie</oozieUrl>
+          <!-- optional -->
+          <args>
+            <arg>arg1</arg>
+            <arg>arg2</arg>
+          </args>
+          <hadoopConfiguration>
+            <property>
+              <name>fs.default.name</name>
+              <value>hdfs://localhost</value>
+            </property>
+            <property>
+              <name>mapred.job.tracker</name>
+              <value>localhost:8021</value>
+            </property>
+          </hadoopConfiguration>
+        </configuration>
+        <executions>
+          <execution>
+            <id>make-app</id>
+            <phase>package</phase>
+            <goals>
+              <goal>package-app</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+   ...
+</project>
+```
+
+Build and run with:
+
+```bash
+mvn package kite:deploy-app
+mvn kite:run-app
+```
